@@ -32,10 +32,61 @@ public class RideSharingSystem implements IRideSharingSystem {
         ridesByPickupTime = new BST<IDateTime, IBST<Integer, IRide>>();
     }
 
-    // ---------------- loading
+    // helper methods for the indexes that have a BST inside a BST
 
+    // add the object to the inner BST of this key, if the key is new make a new inner BST
+    private <K extends Comparable<K>, T> void addToIndex(IBST<K, IBST<Integer, T>> index, K key, int id, T obj) {
+        if (index.findKey(key)) {
+            index.retrieve().insert(id, obj);
+        }
+        else {
+            IBST<Integer, T> inner = new BST<Integer, T>();
+            inner.insert(id, obj);
+            index.insert(key, inner);
+        }
+    }
+
+    // remove the object from the inner BST, if it becomes empty remove the key too
+    private <K extends Comparable<K>, T> void removeFromIndex(IBST<K, IBST<Integer, T>> index, K key, int id) {
+        if (index.findKey(key)) {
+            IBST<Integer, T> inner = index.retrieve();
+            inner.removeKey(id);
+            if (inner.empty())
+                index.removeKey(key);
+        }
+    }
+
+    // return the objects of this key sorted by ID, or an empty list
+    private <K extends Comparable<K>, T> LinkedList<T> searchIndex(IBST<K, IBST<Integer, T>> index, K key) {
+        if (key != null && index.findKey(key))
+            return index.retrieve().inOrder();
+        return new LinkedList<T>();
+    }
+
+    // loading the files
+
+    // each line: riderId,name,email,phoneNumber,homeCity
     public int loadRidersFromCSV(String ridersFilePath) {
-        return 0;
+        int count = 0;
+        try {
+            Scanner file = new Scanner(new File(ridersFilePath));
+            while (file.hasNextLine()) {
+                String[] parts = file.nextLine().split(",");
+                if (parts.length < 5)
+                    continue; // empty or wrong line
+                try {
+                    int id = Integer.parseInt(parts[0]);
+                    if (addRider(new Rider(id, parts[1], parts[2], parts[3], parts[4])))
+                        count++;
+                } catch (IllegalArgumentException e) {
+                    // wrong id or phone, skip the line
+                }
+            }
+            file.close();
+            return count;
+        } catch (FileNotFoundException e) {
+            return -1;
+        }
     }
 
     public int loadDriversFromCSV(String driversFilePath) {
@@ -46,33 +97,46 @@ public class RideSharingSystem implements IRideSharingSystem {
         return 0;
     }
 
-    // ---------------- riders
+    // riders
 
     public boolean addRider(IRider rider) {
-        return false;
+        if (rider == null || rider.getName() == null || rider.getHomeCity() == null)
+            return false;
+
+        // check the id first so we don't add it to some indexes only
+        if (ridersById.findKey(rider.getId()))
+            return false;
+
+        // add it to the three riders indexes
+        ridersById.insert(rider.getId(), rider);
+        addToIndex(ridersByName, rider.getName(), rider.getId(), rider);
+        addToIndex(ridersByHomeCity, rider.getHomeCity(), rider.getId(), rider);
+        return true;
     }
 
     public IRider searchRiderById(int riderId) {
+        if (ridersById.findKey(riderId))
+            return ridersById.retrieve();
         return null;
     }
 
     public LinkedList<IRider> searchRidersByName(String fullName) {
-        return new LinkedList<IRider>();
+        return searchIndex(ridersByName, fullName);
     }
 
     public LinkedList<IRider> searchRidersByHomeCity(String homeCity) {
-        return new LinkedList<IRider>();
+        return searchIndex(ridersByHomeCity, homeCity);
     }
 
     public LinkedList<IRider> getAllRiders() {
-        return new LinkedList<IRider>();
+        return ridersById.inOrder();
     }
 
     public boolean removeRider(int riderId) {
         return false;
     }
 
-    // ---------------- drivers
+    // drivers
 
     public boolean addDriver(IDriver driver) {
         return false;
@@ -94,7 +158,7 @@ public class RideSharingSystem implements IRideSharingSystem {
         return false;
     }
 
-    // ---------------- rides
+    // rides
 
     public int schedulePrivateRide(String pickupLocation, String dropoffLocation, ITimeSlot timeSlot, int riderId, int driverId) {
         return -1;
@@ -132,10 +196,10 @@ public class RideSharingSystem implements IRideSharingSystem {
         return new LinkedList<IDriver>();
     }
 
-    // ---------------- tree statistics
+    // tree statistics
 
     public int nbKeyCompRiderById(int riderId) {
-        return 0;
+        return ridersById.nbKeyComp(riderId);
     }
 
     public int indexSize(IndexName index) {
